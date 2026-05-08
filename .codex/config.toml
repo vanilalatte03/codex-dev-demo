@@ -1,0 +1,5 @@
+[features]
+# The public Codex hooks docs use `codex_hooks`; current CLI builds expose the
+# same stable feature as `hooks`.
+codex_hooks = true
+hooks = true
