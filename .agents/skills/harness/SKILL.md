@@ -1,0 +1,146 @@
+---
+name: harness
+description: "Codex가 이 Harness 프레임워크로 작업해야 할 때 사용한다. 프로젝트 문서 탐색, 구현 결정 논의, phases/ 아래 단계 파일 설계, scripts/execute.py를 통한 페이즈 실행을 포함한다."
+---
+
+# Harness
+
+## 개요
+
+프로젝트 문서를 작고 자기완결적인 구현 단계로 나누고, Harness 페이즈 실행기로 순차 실행할 때 이 워크플로우를 사용한다.
+
+## 워크플로우
+
+### 탐색
+
+`/docs/` 아래의 `PRD.md`, `ARCHITECTURE.md`, `ADR.md`, `UI_GUIDE.md` 같은 문서를 읽고 제품 의도, 아키텍처, 제약 조건을 파악한다. 프로젝트 규칙은 `AGENTS.md`를 읽는다.
+
+### 논의
+
+구현 세부사항이나 기술 선택이 불명확하면 페이즈 파일을 작성하기 전에 선택지를 사용자에게 제시하고 결정을 확정한다.
+
+### 단계 설계
+
+사용자가 구현 계획을 요청하면 집중된 단계들의 초안을 작성하고, 필요하면 페이즈 파일을 만들기 전에 피드백을 받는다.
+
+단계 설계 규칙:
+
+1. 범위를 최소화한다. 하나의 단계는 하나의 레이어 또는 모듈만 다룬다.
+2. 각 단계는 자기완결적으로 작성한다. 이전 대화에 의존하지 말고 필요한 맥락을 단계 파일 안에 포함한다.
+3. 사전 준비를 강제한다. 구현 전에 반드시 읽어야 할 문서와 파일을 나열한다.
+4. 인터페이스와 시그니처는 명시하되, 중요한 규칙이 아닌 구현 세부사항은 에이전트 재량에 맡긴다.
+5. `npm run build && npm test`처럼 실행 가능한 인수 기준을 작성한다.
+6. 주의사항은 `"X를 하지 마라. 이유: Y."` 형식으로 구체적으로 작성한다.
+7. 단계 이름은 `project-setup`, `api-layer`, `auth-flow`처럼 kebab-case를 사용한다.
+
+## 생성할 파일
+
+### `phases/index.json`
+
+최상위 페이즈 인덱스를 생성하거나 갱신한다:
+
+```json
+{
+  "phases": [
+    {
+      "dir": "0-mvp",
+      "status": "pending"
+    }
+  ]
+}
+```
+
+`status`는 `pending`, `completed`, `error`, `blocked` 중 하나여야 한다. 생성 시 타임스탬프를 넣지 않는다. 타임스탬프는 `scripts/execute.py`가 기록한다.
+
+### `phases/{작업명}/index.json`
+
+작업 단위 인덱스를 생성한다:
+
+```json
+{
+  "project": "<프로젝트명>",
+  "phase": "<작업명>",
+  "steps": [
+    { "step": 0, "name": "project-setup", "status": "pending" },
+    { "step": 1, "name": "core-types", "status": "pending" },
+    { "step": 2, "name": "api-layer", "status": "pending" }
+  ]
+}
+```
+
+규칙:
+
+- `project`: 프로젝트 이름이며 보통 `AGENTS.md`에서 가져온다.
+- `phase`: 디렉터리 이름과 일치하는 작업 이름이다.
+- `steps[].step`: 0부터 시작하는 순번이다.
+- `steps[].name`: kebab-case slug다.
+- `steps[].status`: 초기값은 `pending`이다.
+
+상태 필드:
+
+| 상태 | 필드 | 작성 주체 |
+| --- | --- | --- |
+| `completed` | `completed_at`, `summary` | Codex가 `summary`를 쓰고, `execute.py`가 타임스탬프를 쓴다 |
+| `error` | `failed_at`, `error_message` | Codex가 메시지를 쓰고, `execute.py`가 타임스탬프를 쓴다 |
+| `blocked` | `blocked_at`, `blocked_reason` | Codex가 사유를 쓰고, `execute.py`가 타임스탬프를 쓴다 |
+
+`summary`는 이후 단계에 유용한 인계 맥락을 담은 한 줄 요약이어야 한다.
+
+### `phases/{작업명}/step{N}.md`
+
+단계마다 파일을 하나씩 생성한다:
+
+```markdown
+# 단계 {N}: {이름}
+
+## 읽어야 할 파일
+
+먼저 아래 파일들을 읽고 프로젝트의 아키텍처와 설계 의도를 파악하라:
+
+- `/docs/ARCHITECTURE.md`
+- `/docs/ADR.md`
+- {이전 단계에서 생성되거나 수정된 파일 경로}
+
+이전 단계에서 만들어진 코드를 꼼꼼히 읽고, 설계 의도를 이해한 뒤 작업하라.
+
+## 작업
+
+{구체적인 구현 지시, 경로, 시그니처, 핵심 규칙을 작성한다.}
+
+## 인수 기준
+
+```bash
+npm run build
+npm test
+```
+
+## 검증 절차
+
+1. 위 AC 커맨드를 실행한다.
+2. 아키텍처 체크리스트를 확인한다:
+   - ARCHITECTURE.md의 디렉터리 구조를 따르는가?
+   - ADR의 기술 스택을 벗어나지 않았는가?
+   - AGENTS.md의 CRITICAL 규칙을 위반하지 않았는가?
+3. 결과에 따라 `phases/{작업명}/index.json`의 해당 단계를 업데이트한다:
+   - 성공 -> `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
+   - 수정 3회 시도 후에도 실패 -> `"status": "error"`, `"error_message": "구체적 에러 내용"`
+   - 사용자 개입 필요 -> `"status": "blocked"`, `"blocked_reason": "구체적 사유"` 후 즉시 중단
+
+## 금지사항
+
+- {구체적인 금지사항을 `"X를 하지 마라. 이유: Y."` 형식으로 작성한다}
+- 기존 테스트를 깨뜨리지 마라
+```
+
+## 실행
+
+페이즈 실행 명령:
+
+```bash
+python3 scripts/execute.py {작업명}
+python3 scripts/execute.py {작업명} --push
+```
+
+`scripts/execute.py`는 브랜치 생성, `AGENTS.md`와 `docs/*.md`의 가드레일 주입, 완료된 단계의 `summary` 컨텍스트 전달, 재시도 피드백, 코드 변경과 메타데이터의 2단계 커밋, 타임스탬프 기록, 선택적 push를 처리한다.
+
+복구가 필요하면 `phases/{작업명}/index.json`에서 실패 또는 blocked 상태의 단계를 다시 `pending`으로 바꾸고, `error_message` 또는 `blocked_reason`을 제거한 뒤 원인을 해결하고 페이즈를 다시 실행한다.
