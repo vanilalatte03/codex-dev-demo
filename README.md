@@ -62,7 +62,3 @@ python3 scripts/execute.py {task-name} --push
 
 각 step은 독립적인 Codex 실행 단위로 작성하고, 완료 시 `phases/{task-name}/index.json`의 상태와 summary를 업데이트합니다.
 
-## 추천 레포 이름
-
-현재 목적에는 `codex-settings-template`를 추천합니다.
-설정 템플릿이라는 용도가 분명하고, Codex 관련 설정과 hooks, skills를 포함한다는 점이 바로 드러납니다.
