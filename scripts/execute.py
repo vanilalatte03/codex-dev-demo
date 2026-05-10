@@ -19,6 +19,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+import checks
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -58,13 +60,14 @@ class StepExecutor:
     CHORE_MSG = "chore({phase}): step {num} output"
     TZ = timezone(timedelta(hours=9))
 
-    def __init__(self, phase_dir_name: str, *, auto_push: bool = False):
+    def __init__(self, phase_dir_name: str, *, auto_push: bool = False, unsafe: bool = False):
         self._root = str(ROOT)
         self._phases_dir = ROOT / "phases"
         self._phase_dir = self._phases_dir / phase_dir_name
         self._phase_dir_name = phase_dir_name
         self._top_index_file = self._phases_dir / "index.json"
         self._auto_push = auto_push
+        self._unsafe = unsafe
 
         if not self._phase_dir.is_dir():
             print(f"ERROR: {self._phase_dir} not found")
@@ -85,8 +88,9 @@ class StepExecutor:
         self._check_blockers()
         self._checkout_branch()
         guardrails = self._load_guardrails()
+        command_context = self._load_command_context()
         self._ensure_created_at()
-        self._execute_all_steps(guardrails)
+        self._execute_all_steps(guardrails, command_context)
         self._finalize()
 
     # --- timestamps ---
@@ -183,7 +187,30 @@ class StepExecutor:
         if docs_dir.is_dir():
             for doc in sorted(docs_dir.glob("*.md")):
                 sections.append(f"## {doc.stem}\n\n{doc.read_text()}")
+            adr_dir = docs_dir / "adr"
+            if adr_dir.is_dir():
+                for doc in sorted(adr_dir.glob("*.md")):
+                    sections.append(f"## adr/{doc.stem}\n\n{doc.read_text()}")
         return "\n\n---\n\n".join(sections) if sections else ""
+
+    def _load_command_context(self) -> str:
+        selected = checks.collect_checks(ROOT, "manual")
+        if not selected:
+            return (
+                "## 프로젝트 검증 명령\n\n"
+                "`docs/COMMANDS.md`에 lint/test/build 명령이 아직 비어 있습니다. "
+                "step 파일의 인수 기준에 명시된 검증을 우선 실행하고, "
+                "프로젝트 명령이 확정되면 `docs/COMMANDS.md`를 갱신하세요.\n\n"
+            )
+
+        lines = "\n".join(f"{command.command}  # {command.name}" for command in selected)
+        return (
+            "## 프로젝트 검증 명령\n\n"
+            "`docs/COMMANDS.md` 또는 `.codex/project-profile.json` 기준으로 아래 명령을 실행하세요.\n\n"
+            "```bash\n"
+            f"{lines}\n"
+            "```\n\n"
+        )
 
     @staticmethod
     def _build_step_context(index: dict) -> str:
@@ -197,6 +224,7 @@ class StepExecutor:
         return "## 이전 Step 산출물\n\n" + "\n".join(lines) + "\n\n"
 
     def _build_preamble(self, guardrails: str, step_context: str,
+                        command_context: str = "",
                         prev_error: Optional[str] = None) -> str:
         commit_example = self.FEAT_MSG.format(
             phase=self._phase_name, num="N", name="<step-name>"
@@ -211,11 +239,12 @@ class StepExecutor:
             f"당신은 {self._project} 프로젝트의 개발자입니다. 아래 step을 수행하세요.\n\n"
             f"{guardrails}\n\n---\n\n"
             f"{step_context}{retry_section}"
+            f"{command_context}"
             f"## 작업 규칙\n\n"
             f"1. 이전 step에서 작성된 코드를 확인하고 일관성을 유지하라.\n"
             f"2. 이 step에 명시된 작업만 수행하라. 추가 기능이나 파일을 만들지 마라.\n"
             f"3. 기존 테스트를 깨뜨리지 마라.\n"
-            f"4. AC(Acceptance Criteria) 검증을 직접 실행하라.\n"
+            f"4. AC(Acceptance Criteria)와 프로젝트 검증 명령을 직접 실행하라.\n"
             f"5. /phases/{self._phase_dir_name}/index.json의 해당 step status를 업데이트하라:\n"
             f"   - AC 통과 → \"completed\" + \"summary\" 필드에 이 step의 산출물을 한 줄로 요약\n"
             f"   - {self.MAX_RETRIES}회 수정 시도 후에도 실패 → \"error\" + \"error_message\" 기록\n"
@@ -235,8 +264,12 @@ class StepExecutor:
             sys.exit(1)
 
         prompt = preamble + step_file.read_text()
+        cmd = ["codex", "exec", "--json"]
+        if self._unsafe:
+            cmd.append("--dangerously-bypass-approvals-and-sandbox")
+        cmd.append(prompt)
         result = subprocess.run(
-            ["codex", "exec", "--json", "--dangerously-bypass-approvals-and-sandbox", prompt],
+            cmd,
             cwd=self._root, capture_output=True, text=True, timeout=1800,
         )
 
@@ -290,7 +323,7 @@ class StepExecutor:
 
     # --- 실행 루프 ---
 
-    def _execute_single_step(self, step: dict, guardrails: str) -> bool:
+    def _execute_single_step(self, step: dict, guardrails: str, command_context: str) -> bool:
         """단일 step 실행 (재시도 포함). 완료되면 True, 실패/차단이면 False."""
         step_num, step_name = step["step"], step["name"]
         done = sum(1 for s in self._read_json(self._index_file)["steps"] if s["status"] == "completed")
@@ -299,7 +332,7 @@ class StepExecutor:
         for attempt in range(1, self.MAX_RETRIES + 1):
             index = self._read_json(self._index_file)
             step_context = self._build_step_context(index)
-            preamble = self._build_preamble(guardrails, step_context, prev_error)
+            preamble = self._build_preamble(guardrails, step_context, command_context, prev_error)
 
             tag = f"Step {step_num}/{self._total - 1} ({done} done): {step_name}"
             if attempt > 1:
@@ -361,7 +394,7 @@ class StepExecutor:
 
         return False  # unreachable
 
-    def _execute_all_steps(self, guardrails: str):
+    def _execute_all_steps(self, guardrails: str, command_context: str):
         while True:
             index = self._read_json(self._index_file)
             pending = next((s for s in index["steps"] if s["status"] == "pending"), None)
@@ -376,7 +409,7 @@ class StepExecutor:
                     self._write_json(self._index_file, index)
                     break
 
-            self._execute_single_step(pending, guardrails)
+            self._execute_single_step(pending, guardrails, command_context)
 
     def _finalize(self):
         index = self._read_json(self._index_file)
@@ -408,9 +441,10 @@ def main():
     parser = argparse.ArgumentParser(description="Harness Step Executor")
     parser.add_argument("phase_dir", help="Phase directory name (e.g. 0-mvp)")
     parser.add_argument("--push", action="store_true", help="Push branch after completion")
+    parser.add_argument("--unsafe", action="store_true", help="Run codex exec with sandbox and approval bypass")
     args = parser.parse_args()
 
-    StepExecutor(args.phase_dir, auto_push=args.push).run()
+    StepExecutor(args.phase_dir, auto_push=args.push, unsafe=args.unsafe).run()
 
 
 if __name__ == "__main__":

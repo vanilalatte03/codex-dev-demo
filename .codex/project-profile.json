@@ -1,0 +1,21 @@
+{
+  "projectName": "<project-name>",
+  "profile": "mixed",
+  "guardMode": "soft",
+  "commands": {
+    "dev": [],
+    "lint": [],
+    "test": [],
+    "build": [],
+    "review": []
+  },
+  "sourceRoots": [
+    "src",
+    "app"
+  ],
+  "testRoots": [
+    "tests",
+    "test",
+    "src/test"
+  ]
+}
