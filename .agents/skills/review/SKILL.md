@@ -18,8 +18,9 @@ description: "Codex가 이 Harness 기반 프로젝트의 변경사항을 AGENTS
 - `/AGENTS.md`
 - `/docs/ARCHITECTURE.md`
 - `/docs/ADR.md`
+- `/docs/COMMANDS.md`
 
-변경 diff가 다른 문서에서 설명하는 영역을 건드릴 때만 추가 문서를 읽는다.
+`docs/adr/` 디렉터리가 있으면 분리된 ADR도 함께 읽는다. 변경 diff가 다른 문서에서 설명하는 영역을 건드릴 때만 추가 문서를 읽는다.
 
 ### 변경사항 확인
 
@@ -33,7 +34,7 @@ description: "Codex가 이 Harness 기반 프로젝트의 변경사항을 AGENTS
 2. 기술 선택: 변경사항이 ADR 결정을 위반하지 않는가?
 3. 테스트 커버리지: 새로운 동작에 적절한 테스트가 있거나, 테스트가 필요 없는 명확한 이유가 있는가?
 4. 핵심 규칙: 변경사항이 `AGENTS.md`의 CRITICAL 규칙을 위반하지 않는가?
-5. 빌드 준비 상태: 필요한 빌드, 린트, 테스트 명령을 로컬에서 실행할 수 있을 때 통과하는가?
+5. 빌드 준비 상태: `docs/COMMANDS.md`의 빌드, 린트, 테스트 명령을 로컬에서 실행할 수 있을 때 통과하는가?
 
 ### 출력
 

@@ -1,24 +1,36 @@
 # 아키텍처
 
-## 디렉토리 구조
-```
-src/
-├── app/               # 페이지 + API 라우트
-├── components/        # UI 컴포넌트
-├── types/             # TypeScript 타입 정의
-├── lib/               # 유틸리티 + 헬퍼
-└── services/          # 외부 API 래퍼
+## 시스템 개요
+- Runtime/Framework: <Spring Boot | Python | Node | 기타>
+- 주요 책임: <이 시스템이 맡는 핵심 책임>
+- 외부 의존성: <DB, API, queue, file system 등>
+
+## 디렉터리 구조
+```text
+<프로젝트 구조를 실제 경로 기준으로 작성>
 ```
 
-## 패턴
-{사용하는 디자인 패턴 (예: Server Components 기본, 인터랙션이 필요한 곳만 Client Component)}
+## 모듈 경계
+- <모듈/패키지/레이어 1>: <책임>
+- <모듈/패키지/레이어 2>: <책임>
+- <모듈/패키지/레이어 3>: <책임>
 
 ## 데이터 흐름
-```
-{데이터가 어떻게 흐르는지 (예:
-사용자 입력 → Client Component → API Route → 외부 API → 응답 → UI 업데이트
-)}
+```text
+<입력> -> <처리 경계> -> <저장/외부 API> -> <응답/출력>
 ```
 
-## 상태 관리
-{상태 관리 방식 (예: 서버 상태는 Server Components, 클라이언트 상태는 useState/useReducer)}
+## 상태와 저장소
+- 영속 상태: <DB/table/file 등>
+- 임시 상태: <cache/session/memory 등>
+- 마이그레이션 전략: <필요 시 작성>
+
+## 오류 처리
+- 사용자 입력 오류: <처리 방식>
+- 외부 의존성 실패: <처리 방식>
+- 재시도/복구: <처리 방식>
+
+## 테스트 전략
+- 단위 테스트: <대상>
+- 통합 테스트: <대상>
+- 수동 검증: <필요 시 작성>

@@ -35,6 +35,18 @@ def tmp_project(tmp_path):
     docs_dir.mkdir()
     (docs_dir / "arch.md").write_text("# Architecture\nSome content")
     (docs_dir / "guide.md").write_text("# Guide\nAnother doc")
+    (docs_dir / "COMMANDS.md").write_text(
+        """
+# Commands
+
+## 활성 명령
+
+| 이름 | 명령 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| test | `python -m pytest` | yes | tests |
+| build | `python -m compileall scripts` | yes | build |
+""".strip()
+    )
 
     return tmp_path
 
@@ -166,6 +178,15 @@ class TestLoadGuardrails:
         guide_pos = result.index("guide")
         assert arch_pos < guide_pos
 
+    def test_loads_split_adrs(self, executor, tmp_project):
+        adr_dir = tmp_project / "docs" / "adr"
+        adr_dir.mkdir()
+        (adr_dir / "0001-test.md").write_text("# Split ADR")
+        with patch.object(ex, "ROOT", tmp_project):
+            result = executor._load_guardrails()
+        assert "adr/0001-test" in result
+        assert "Split ADR" in result
+
     def test_no_agents_md(self, executor, tmp_project):
         (tmp_project / "AGENTS.md").unlink()
         with patch.object(ex, "ROOT", tmp_project):
@@ -228,6 +249,25 @@ class TestBuildStepContext:
 
 
 # ---------------------------------------------------------------------------
+# _load_command_context
+# ---------------------------------------------------------------------------
+
+class TestLoadCommandContext:
+    def test_includes_commands_from_commands_md(self, executor, tmp_project):
+        with patch.object(ex, "ROOT", tmp_project):
+            result = executor._load_command_context()
+        assert "python -m pytest" in result
+        assert "python -m compileall scripts" in result
+        assert "docs/COMMANDS.md" in result
+
+    def test_mentions_empty_commands_when_none_configured(self, executor, tmp_project):
+        (tmp_project / "docs" / "COMMANDS.md").write_text("# Commands\n")
+        with patch.object(ex, "ROOT", tmp_project):
+            result = executor._load_command_context()
+        assert "아직 비어 있습니다" in result
+
+
+# ---------------------------------------------------------------------------
 # _build_preamble
 # ---------------------------------------------------------------------------
 
@@ -270,6 +310,11 @@ class TestBuildPreamble:
     def test_includes_index_path(self, executor):
         result = executor._build_preamble("", "")
         assert "/phases/0-mvp/index.json" in result
+
+    def test_includes_command_context(self, executor):
+        result = executor._build_preamble("", "", "## 프로젝트 검증 명령\n\n```bash\npython -m pytest\n```\n")
+        assert "프로젝트 검증 명령" in result
+        assert "python -m pytest" in result
 
 
 # ---------------------------------------------------------------------------
@@ -436,9 +481,20 @@ class TestInvokeCodex:
         assert cmd[0] == "codex"
         assert cmd[1] == "exec"
         assert "--json" in cmd
-        assert "--dangerously-bypass-approvals-and-sandbox" in cmd
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd
         assert "PREAMBLE" in cmd[-1]
         assert "UI를 구현하세요" in cmd[-1]
+
+    def test_unsafe_adds_bypass_flag(self, executor):
+        executor._unsafe = True
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            executor._invoke_codex(step, "preamble")
+
+        cmd = mock_run.call_args[0][0]
+        assert "--dangerously-bypass-approvals-and-sandbox" in cmd
 
     def test_saves_output_json(self, executor):
         mock_result = MagicMock(returncode=0, stdout='{"ok": true}', stderr="")
